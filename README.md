@@ -92,7 +92,7 @@ Example query with explanation
 
 Selecting data (SELECT, WHERE)
 Concept
-SELECT chooses columns; FROM chooses table; WHERE filters rows before grouping/aggregation.
+```SELECT chooses columns; FROM chooses table; WHERE filters rows before grouping/aggregation.```
 ​
 
 Common questions
@@ -102,12 +102,12 @@ Common questions
 
 Example
 sql
--- Q1: USA customers signed up in 2024
+```-- Q1: USA customers signed up in 2024
 SELECT customer_id, first_name, last_name
 FROM customers
 WHERE country = 'USA'
   AND signup_date >= '2024-01-01'
-  AND signup_date <  '2025-01-01';
+  AND signup_date <  '2025-01-01';```
 Key interview points:
 
 Use half‑open date ranges to avoid off‑by‑one errors.
@@ -126,11 +126,11 @@ Questions
 
 Example
 sql
--- Last 3 orders by date
+```-- Last 3 orders by date
 SELECT order_id, customer_id, order_date
 FROM orders
 ORDER BY order_date DESC, order_id DESC
-LIMIT 3;
+LIMIT 3;```
 Key points:
 
 Always specify ORDER BY when you use LIMIT in interviews; result order is undefined without it.
@@ -153,7 +153,7 @@ Questions
 Examples
 sql
 -- Revenue per customer (sum of quantity * unit_price)
-SELECT
+```SELECT
     o.customer_id,
     SUM(oi.quantity * oi.unit_price) AS total_revenue
 FROM orders o
@@ -163,7 +163,7 @@ sql
 -- Orders per status
 SELECT status, COUNT(*) AS order_count
 FROM orders
-GROUP BY status;
+GROUP BY status;```
 Interview talking points:
 
 COUNT(*) counts rows, including NULLs; COUNT(column) ignores rows where column is NULL.
@@ -172,13 +172,13 @@ Filters that should impact aggregation go in WHERE; filters on aggregated result
 
 sql
 -- Customers with revenue > 500
-SELECT
+```SELECT
     o.customer_id,
     SUM(oi.quantity * oi.unit_price) AS total_revenue
 FROM orders o
 JOIN order_items oi ON o.order_id = oi.order_id
 GROUP BY o.customer_id
-HAVING SUM(oi.quantity * oi.unit_price) > 500;
+HAVING SUM(oi.quantity * oi.unit_price) > 500;```
 Joins (inner, left, right, full, cross)
 Your screenshots mention joins multiple times, so this section is critical.
 ​
@@ -204,7 +204,7 @@ Typical interview questions
 “How to find orders with items that have no matching product?” (data quality check).
 
 INNER JOIN example
-sql
+```sql
 -- Orders with customer name
 SELECT
     o.order_id,
@@ -214,13 +214,13 @@ SELECT
     o.status
 FROM orders o
 INNER JOIN customers c
-    ON o.customer_id = c.customer_id;
+    ON o.customer_id = c.customer_id;```
 Explanation:
 
 Only customers that have orders appear. If a row is in orders with a customer_id that doesn’t exist in customers, it is excluded.
 
 LEFT JOIN example (customers without orders)
-sql
+```sql
 -- Customers and their total order count (including 0)
 SELECT
     c.customer_id,
@@ -229,7 +229,7 @@ SELECT
 FROM customers c
 LEFT JOIN orders o
     ON c.customer_id = o.customer_id
-GROUP BY c.customer_id, c.first_name;
+GROUP BY c.customer_id, c.first_name;```
 Points to mention:
 
 LEFT JOIN preserves all customers.
@@ -241,7 +241,7 @@ Some databases don’t support FULL OUTER JOIN directly (e.g., MySQL). You can e
 
 Interview answer:
 
-sql
+```sql
 -- Full outer join using UNION (MySQL-style)
 SELECT *
 FROM customers c
@@ -251,7 +251,7 @@ UNION
 
 SELECT *
 FROM customers c
-RIGHT JOIN orders o ON c.customer_id = o.customer_id;
+RIGHT JOIN orders o ON c.customer_id = o.customer_id;```
 Explain:
 
 First query gets all customers plus matching orders.
@@ -261,11 +261,11 @@ Second gets all orders plus customers that might not exist (data anomaly).
 UNION removes duplicates (we want that where matches exist).
 
 CROSS JOIN example
-sql
+```sql
 -- All combinations of country and category (for possible reports)
 SELECT DISTINCT c.country, p.category
 FROM customers c
-CROSS JOIN products p;
+CROSS JOIN products p;```
 Explain:
 
 Use rarely; can explode row count; mention that in interview to show awareness of data explosion / skew.
@@ -275,7 +275,7 @@ Question
 “Find total revenue per customer per product category.”
 
 Query
-sql
+```sql
 SELECT
     c.customer_id,
     c.first_name,
@@ -288,7 +288,7 @@ JOIN order_items oi
     ON o.order_id = oi.order_id
 JOIN products p
     ON oi.product_id = p.product_id
-GROUP BY c.customer_id, c.first_name, p.category;
+GROUP BY c.customer_id, c.first_name, p.category;```
 Interview notes:
 
 Show you can chain multiple joins.
@@ -301,7 +301,7 @@ Filtering on joined data
 Question
 “List all shipped orders for USA customers.”
 
-sql
+```sql
 SELECT
     o.order_id,
     o.order_date,
@@ -311,7 +311,7 @@ FROM orders o
 JOIN customers c
     ON o.customer_id = c.customer_id
 WHERE c.country = 'USA'
-  AND o.status = 'shipped';
+  AND o.status = 'shipped';```
 Explain:
 
 Filters in WHERE apply after the join but before grouping.
@@ -320,19 +320,19 @@ If using LEFT JOIN and you filter only on columns from the right table in WHERE,
 
 Example of the trap:
 
-sql
+```sql
 -- BUGGY: this behaves like INNER JOIN
 SELECT c.customer_id, o.order_id
 FROM customers c
 LEFT JOIN orders o ON c.customer_id = o.customer_id
-WHERE o.status = 'shipped';
+WHERE o.status = 'shipped';```
 Correct version (if you really want customers with zero shipped orders too):
 
 sql
-SELECT c.customer_id, o.order_id
+```SELECT c.customer_id, o.order_id
 FROM customers c
 LEFT JOIN orders o ON c.customer_id = o.customer_id
-  AND o.status = 'shipped';
+  AND o.status = 'shipped';```
 Basic subqueries (to connect later with CTEs)
 Concept
 A subquery is a query inside another query; used in WHERE, FROM, or SELECT.
@@ -342,7 +342,7 @@ Question
 “Find customers whose total revenue is above the average customer revenue.”
 
 sql
--- Subquery in WHERE
+```-- Subquery in WHERE
 SELECT customer_id, total_revenue
 FROM (
     SELECT
@@ -360,7 +360,7 @@ WHERE total_revenue >
            FROM orders o
            JOIN order_items oi ON o.order_id = oi.order_id
            GROUP BY o.customer_id
-      ) x);
+      ) x);```
 
 
 
