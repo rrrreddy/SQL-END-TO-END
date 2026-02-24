@@ -361,3 +361,397 @@ WHERE total_revenue >
            JOIN order_items oi ON o.order_id = oi.order_id
            GROUP BY o.customer_id
       ) x);
+
+
+
+### Window functions basics
+Window functions perform calculations across a set of related rows but keep each row.
+
+Syntax pattern:
+```
+function_name(...) OVER (
+    PARTITION BY <col(s)>   -- optional: define groups
+    ORDER BY <col(s)>       -- optional: define order inside each group
+    -- optional frame clause
+)
+```
+**Ranking functions: ROW_NUMBER, RANK, DENSE_RANK**
+Concepts
+ROW_NUMBER(): unique sequence, no ties; 1,2,3,….
+
+RANK(): same value ⇒ same rank; gaps after ties (1,1,3,…).
+
+DENSE_RANK(): same value ⇒ same rank; no gaps (1,1,2,…).
+
+Interview question 1
+“Get each customer’s orders, with newest first, and assign a row number per customer.”
+```
+SELECT
+    o.customer_id,
+    o.order_id,
+    o.order_date,
+    ROW_NUMBER() OVER (
+        PARTITION BY o.customer_id
+        ORDER BY o.order_date DESC, o.order_id DESC
+    ) AS order_seq
+FROM orders o;
+```
+Use cases to mention:
+
+Pick latest order per customer by wrapping in a subquery/CTE and filtering order_seq = 1.
+```
+WITH ordered AS (
+    SELECT
+        o.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY o.customer_id
+            ORDER BY o.order_date DESC, o.order_id DESC
+        ) AS rn
+    FROM orders o
+)
+SELECT *
+FROM ordered
+WHERE rn = 1;
+```
+This pattern (ROW_NUMBER in CTE then filter) is extremely common in interviews.
+
+Interview question 2
+“Top 2 products per category by revenue, and explain the difference between RANK and DENSE_RANK.”
+
+```
+WITH product_revenue AS (
+    SELECT
+        p.product_id,
+        p.product_name,
+        p.category,
+        SUM(oi.quantity * oi.unit_price) AS revenue
+    FROM products p
+    JOIN order_items oi ON p.product_id = oi.product_id
+    GROUP BY p.product_id, p.product_name, p.category
+)
+SELECT
+    category,
+    product_name,
+    revenue,
+    RANK() OVER (
+        PARTITION BY category
+        ORDER BY revenue DESC
+    ) AS rnk,
+    DENSE_RANK() OVER (
+        PARTITION BY category
+        ORDER BY revenue DESC
+    ) AS dense_rnk
+FROM product_revenue
+WHERE RANK() OVER (
+        PARTITION BY category
+        ORDER BY revenue DESC
+     ) <= 2;
+```
+Explain for the interviewer:
+
+If two products tie for highest revenue in a category, both get rank 1.
+
+RANK then jumps to 3 for the next product; DENSE_RANK uses 2.
+
+**LEAD and LAG**
+Concepts
+LAG(col, offset) looks at previous row in the window.
+
+LEAD(col, offset) looks at next row.
+
+“Show each customer’s orders and the gap in days since their previous order.”
+```
+SELECT
+    o.customer_id,
+    o.order_id,
+    o.order_date,
+    LAG(o.order_date) OVER (
+        PARTITION BY o.customer_id
+        ORDER BY o.order_date
+    ) AS prev_order_date,
+    DATEDIFF(
+        DAY,
+        LAG(o.order_date) OVER (
+            PARTITION BY o.customer_id
+            ORDER BY o.order_date
+        ),
+        o.order_date
+    ) AS days_since_prev
+FROM orders o
+ORDER BY o.customer_id, o.order_date;
+```
+Key talking points:
+
+LAG avoids self‑joins for “previous row” questions (stock prices, page views, customer events).
+
+First row per partition has NULL previous value; you can provide a default: LAG(col,1,0).
+
+
+**Aggregation as window function (running totals, partitioning)**
+Running total per customer
+“Compute running total revenue per customer, by date.”
+```
+SELECT
+    o.customer_id,
+    o.order_date,
+    SUM(oi.quantity * oi.unit_price) AS daily_revenue,
+    SUM(oi.quantity * oi.unit_price) OVER (
+        PARTITION BY o.customer_id
+        ORDER BY o.order_date
+        ROWS BETWEEN UNBOUNDED PRECEDING
+                 AND CURRENT ROW
+    ) AS running_revenue
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+GROUP BY o.customer_id, o.order_date
+ORDER BY o.customer_id, o.order_date;
+```
+Explain:
+
+The GROUP BY aggregates to daily revenue; window SUM then builds a cumulative total per customer.​
+
+Window aggregation keeps one row per date (not collapsed like normal GROUP BY).
+
+### CTEs (Common Table Expressions)
+Concept
+CTE = named temporary result defined with WITH, used only for one statement.
+
+Syntax:
+```
+WITH cte_name AS (
+    -- some SELECT
+)
+SELECT ...
+FROM cte_name;
+```
+WITH cte_name AS (
+    -- some SELECT
+)
+SELECT ...
+FROM cte_name;
+```
+Why interviews like CTEs
+Improve readability of multi‑step logic.
+
+Reusable inside the same query.
+
+Required for recursive queries in many databases.
+```
+WITH customer_revenue AS (
+    SELECT
+        o.customer_id,
+        SUM(oi.quantity * oi.unit_price) AS total_revenue
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    GROUP BY o.customer_id
+)
+SELECT *
+FROM customer_revenue
+WHERE total_revenue > 500;
+```
+Explain:
+
+CTE is just syntactic sugar; logically similar to derived table.
+
+Advantage is clarity when you later add window functions or additional filters.
+
+**Interview question 2 – multiple CTEs**
+“Find, for each customer, their latest order and the number of days since signup.”
+
+```
+WITH latest_order AS (
+    SELECT
+        o.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY o.customer_id
+            ORDER BY o.order_date DESC, o.order_id DESC
+        ) AS rn
+    FROM orders o
+),
+max_per_customer AS (
+    SELECT *
+    FROM latest_order
+    WHERE rn = 1
+)
+SELECT
+    c.customer_id,
+    c.first_name,
+    max_per_customer.order_id,
+    max_per_customer.order_date,
+    DATEDIFF(DAY, c.signup_date, max_per_customer.order_date) AS days_since_signup
+FROM customers c
+JOIN max_per_customer
+  ON c.customer_id = max_per_customer.customer_id;
+```
+Talking points:
+
+Multiple CTEs are evaluated top‑down; later CTEs can use previous ones.
+​
+
+Always mention complexity impact: some engines materialize CTEs; others inline them.
+
+Anti‑joins: finding missing data
+Pattern 1: LEFT JOIN ... WHERE right IS NULL
+“Find order_items whose product_id does not exist in products (data quality issue).”
+
+```
+SELECT *
+FROM customers c
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM orders o
+    WHERE o.customer_id = c.customer_id
+);
+```
+Explain:
+
+NOT EXISTS usually handles NULLs safely and can be more efficient than NOT IN in many engines.
+​
+### UNION vs UNION ALL
+Frequently asked with joins.
+​
+
+UNION ALL: concatenates results, keeps duplicates, faster (no dedup sort).
+
+UNION: deduplicates rows, may need sort/hash, slower.
+```
+SELECT customer_id FROM customers WHERE country = 'USA'
+UNION ALL
+SELECT customer_id FROM customers WHERE country = 'Mexico';
+```
+Mention: choose UNION only when you need uniqueness.
+
+Constraints and keys
+Primary key and foreign key
+From our schema:
+```
+CREATE TABLE customers (
+    customer_id INT PRIMARY KEY,
+    ...
+);
+
+CREATE TABLE orders (
+    order_id INT PRIMARY KEY,
+    customer_id INT,
+    CONSTRAINT fk_orders_customer
+        FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);
+```
+Interview points:
+
+Primary key: unique + NOT NULL, identifies a row.
+
+Foreign key: enforces referential integrity; order must link to existing customer.
+
+You can have one primary key per table but multiple foreign keys.
+
+Other constraints
+UNIQUE – all values distinct.
+
+CHECK – custom boolean expression (e.g., quantity > 0).
+
+NOT NULL – disallow NULL.
+```
+ALTER TABLE order_items
+ADD CONSTRAINT chk_quantity_positive
+CHECK (quantity > 0);
+```
+### Normalization vs denormalization (high‑level)
+Interviewers often test if you understand data modeling more than exact forms.
+
+Normalization: structuring tables to reduce redundancy, avoid anomalies (1NF, 2NF, 3NF…).
+
+Denormalization: intentionally duplicating data for read performance (e.g., adding customer_country into orders for reporting).
+
+```
+ALTER TABLE orders ADD customer_country VARCHAR(50);
+
+UPDATE orders o
+JOIN customers c ON o.customer_id = c.customer_id
+SET o.customer_country = c.country;
+```
+“For OLTP systems I prefer normalized models; for analytics (star schema on Snowflake or Databricks) I may denormalize to simplify reporting and improve performance.”
+
+### Indexing basics (very common interview topic)
+What is an index?
+An index is a separate data structure that lets the DB find rows faster, similar to a book index.
+Key concepts to say:
+
+Clustered index: defines physical order of rows; usually on primary key (order_id).
+
+Non‑clustered index: separate structure pointing to rows; many per table allowed.
+​
+Example interview‑style answer:
+
+```
+-- Non-clustered index to speed up lookups by customer_id on orders
+CREATE INDEX ix_orders_customer_id
+ON orders(customer_id);
+```
+Talking points:
+
+Helps queries like WHERE customer_id = ? or joins on customer_id.
+
+Too many indexes slow down INSERT/UPDATE/DELETE because each index must be updated.
+
+Putting it together – interview‑style question
+Question: “For each customer, show their latest order, its revenue, their total lifetime revenue, their rank by total revenue among all customers, and number of days since previous order.”
+```
+WITH order_revenue AS (
+    SELECT
+        o.order_id,
+        o.customer_id,
+        o.order_date,
+        SUM(oi.quantity * oi.unit_price) AS order_revenue
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    GROUP BY o.order_id, o.customer_id, o.order_date
+),
+customer_totals AS (
+    SELECT
+        customer_id,
+        SUM(order_revenue) AS total_revenue
+    FROM order_revenue
+    GROUP BY customer_id
+),
+latest_orders AS (
+    SELECT
+        orv.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY orv.customer_id
+            ORDER BY orv.order_date DESC, orv.order_id DESC
+        ) AS rn,
+        LAG(orv.order_date) OVER (
+            PARTITION BY orv.customer_id
+            ORDER BY orv.order_date
+        ) AS prev_order_date
+    FROM order_revenue orv
+)
+SELECT
+    c.customer_id,
+    c.first_name,
+    lo.order_id,
+    lo.order_date,
+    lo.order_revenue,
+    ct.total_revenue,
+    RANK() OVER (ORDER BY ct.total_revenue DESC) AS revenue_rank,
+    DATEDIFF(DAY, lo.prev_order_date, lo.order_date) AS days_since_prev_order
+FROM latest_orders lo
+JOIN customers c ON c.customer_id = lo.customer_id
+JOIN customer_totals ct ON ct.customer_id = c.customer_id
+WHERE lo.rn = 1
+ORDER BY revenue_rank;
+```
+This single query showcases:
+
+CTEs
+
+Aggregations
+
+Joins
+
+Window functions (ROW_NUMBER, LAG, RANK)
+
+Business‑style logic (lifetime vs latest metrics)
+
+Exactly the style seen in advanced SQL interview guides.
