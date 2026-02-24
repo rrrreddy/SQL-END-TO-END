@@ -1,13 +1,15 @@
 # SQL-END-TO-END
 
-Sample database setup
+### Sample database setup
 We’ll use a simple e‑commerce schema so every question feels realistic.
 
+```
 sql
 -- Create database (if your DB needs it)
 CREATE DATABASE interview_sql;
 USE interview_sql;
-
+```
+```
 -- Customers
 CREATE TABLE customers (
     customer_id   INT PRIMARY KEY,
@@ -75,6 +77,7 @@ INSERT INTO order_items VALUES
 (1003,102,13,4,80.00),
 (1004,103,11,1,25.00),
 (1005,103,13,2,80.00);
+```
 This schema lets you practice joins, aggregations, window functions, CTEs, subqueries, constraints, skewed data handling (conceptual), partitioning and salting (data‑engineering‑side)—all topics named in your screenshots.
 ​
 
